@@ -170,9 +170,9 @@ if([30,60,120].includes(qaFPS)){
  window.requestAnimationFrame=function(callback){function gate(time){if(time-previous>=1000/qaFPS-0.5){previous=time;callback(time);}else{nativeRAF(gate);}}return nativeRAF(gate);};
 }
 </script>
-<script src="game-0c5d83b5d431.js"></script>
+<script src="game-6e3daab41ef1.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":1,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"game-0c5d83b5d431","experimentalVK":false,"fileSizes":{"game-0c5d83b5d431.pck":90381232,"game-0c5d83b5d431.wasm":39513091},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":1,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"game-6e3daab41ef1","experimentalVK":false,"fileSizes":{"game-6e3daab41ef1.pck":92388972,"game-6e3daab41ef1.wasm":39513091},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 // This prototype uses WebGL/WASM and touch only. No microphone, clipboard,
 // persistence, service worker, threads, or credentials are needed for private LAN preview.
@@ -322,7 +322,7 @@ const engine = new Engine(GODOT_CONFIG);
  async function prepare(data){manifest=data;await Promise.all(Object.entries(data.runtime||{}).map(async([key,file])=>{const bytes=await(await fetch('audio/carbon/'+file)).arrayBuffer();buffers.set(key,await ctx.decodeAudioData(bytes));}));}
  function makeLoop(key){if(loops.has(key)||!buffers.has(key))return;const gain=ctx.createGain();gain.gain.value=0;gain.connect(master);const source=ctx.createBufferSource();source.buffer=buffers.get(key);source.loop=true;source.connect(gain);source.start();loops.set(key,{source,gain});}
  function stopLoops(){for(const l of loops.values()){l.gain.gain.setTargetAtTime(0,ctx.currentTime,.015);l.source.stop(ctx.currentTime+.08);}loops.clear();for(const s of shots.values())try{s.source.stop();}catch{}shots.clear();}
- const loopKeys=['engine_idle','engine_load','engine_coast','engine_underhood','engine_tunnel','skid','brake','nitro_loop'];
+ const loopKeys=['engine_idle','engine_load','engine_coast','engine_underhood','engine_tunnel','skid','brake','nitro_loop','police_siren'];
  window.carbonSound={
   prepare,
   garageBass,
