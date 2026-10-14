@@ -1,0 +1,6 @@
+*.pck binary
+*.wasm binary
+*.ogg binary
+*.mp3 binary
+*.wav binary
+*.png binary

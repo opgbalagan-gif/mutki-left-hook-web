@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>МУТКИ — ЛЕВЫЙ ХУК</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #242424;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'><style>html,body{margin:0;background:#080b10;overflow:hidden;overscroll-behavior:none;touch-action:none}#canvas{touch-action:none}</style>
+	<style>
+body{display:flex;align-items:center;justify-content:center;min-height:100dvh;background:#080b10!important}
+#canvas{position:absolute;left:50%!important;top:50%!important;transform:translate(-50%,-50%);width:min(100vw,calc(100dvh * 9 / 16))!important;height:min(100dvh,calc(100vw * 16 / 9))!important;touch-action:none}
+#metrics{position:fixed;left:50%;transform:translateX(-50%);bottom:max(6px,env(safe-area-inset-bottom));color:#a4b3c3;font:10px monospace;z-index:4;pointer-events:none;background:#080b1088;padding:3px 7px;white-space:nowrap}
+</style>
+</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script>
+// App-owned Web Audio diagnostics. No microphone or desktop capture.
+(() => {
+ const sources=[],taps=[],contexts=new Set();let id=0,peakEver=0;
+ const originalConnect=AudioNode.prototype.connect;
+ AudioNode.prototype.connect=function(destination,...rest){
+  const result=originalConnect.call(this,destination,...rest);
+  contexts.add(this.context);
+  if(destination===this.context.destination && !taps.some(t=>t.node===this)){
+   const analyser=this.context.createAnalyser();analyser.fftSize=2048;
+   const silent=this.context.createGain();silent.gain.value=0;
+   originalConnect.call(this,analyser);originalConnect.call(analyser,silent);originalConnect.call(silent,destination);
+   taps.push({node:this,analyser,data:new Float32Array(2048)});
+  }
+  return result;
+ };
+ const originalStart=AudioBufferSourceNode.prototype.start;
+ const originalStop=AudioBufferSourceNode.prototype.stop;
+ AudioBufferSourceNode.prototype.start=function(when=0,offset=0,...rest){
+  const entry={id:++id,node:this,start:Math.max(this.context.currentTime,when),offset,duration:this.buffer?.duration||0,active:true};
+  sources.push(entry);contexts.add(this.context);
+  this.addEventListener('ended',()=>{entry.active=false;});
+  return originalStart.call(this,when,offset,...rest);
+ };
+ AudioBufferSourceNode.prototype.stop=function(...args){
+  const entry=sources.find(s=>s.node===this);if(entry)entry.active=false;
+  return originalStop.apply(this,args);
+ };
+ window.carbonAudioClock=()=>{
+  const song=sources.findLast(s=>s.duration>60 && s.active);
+  if(!song)return -1;
+  const ctx=song.node.context;
+  const output=ctx.getOutputTimestamp?.().contextTime;
+  const now=(output && output>0)?output:ctx.currentTime;
+  return Math.max(0,Math.min(song.duration,song.offset+now-song.start));
+ };
+ function resume(){for(const ctx of contexts)if(ctx.state==='suspended')ctx.resume().catch(()=>{});}
+ window.addEventListener('pointerdown',resume,true);window.addEventListener('keydown',resume,true);window.addEventListener('touchstart',resume,{capture:true,passive:true});
+ setInterval(()=>{
+  let sum=0,count=0,peak=0;
+  for(const tap of taps){tap.analyser.getFloatTimeDomainData(tap.data);for(const x of tap.data){sum+=x*x;peak=Math.max(peak,Math.abs(x));count++;}}
+  peakEver=Math.max(peakEver,peak);
+  const stats={contexts:[...contexts].map(c=>c.state),rms:Math.sqrt(sum/Math.max(1,count)),peak,peakEver,musicSourcesActive:sources.filter(s=>s.duration>60&&s.active).length,musicStarts:sources.filter(s=>s.duration>60).length,musicTime:window.carbonAudioClock(),audioSourcesActive:sources.filter(s=>s.active).length};
+  const out=document.getElementById('audio-evidence');if(out)out.dataset.audio=JSON.stringify(stats);
+  // Keep diagnostic bookkeeping bounded over repeated races.
+  if(sources.length>150)sources.splice(0,sources.length-100);
+ },250);
+})();
+
+</script>
+<script>
+// Explicit QA render caps for 30/60 tests. Physics remains 60 Hz; native refresh limits 120.
+const qaFPS=Number(new URLSearchParams(location.search).get('fps'));
+if([30,60,120].includes(qaFPS)){
+ const nativeRAF=window.requestAnimationFrame.bind(window);let previous=0;
+ window.requestAnimationFrame=function(callback){function gate(time){if(time-previous>=1000/qaFPS-0.5){previous=time;callback(time);}else{nativeRAF(gate);}}return nativeRAF(gate);};
+}
+</script>
+<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":1,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":90314128,"index.wasm":39513091},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_THREADS_ENABLED = false;
+// This prototype uses WebGL/WASM and touch only. No microphone, clipboard,
+// persistence, service worker, threads, or credentials are needed for private LAN preview.
+// Browser secure-context state is not spoofed; public hosts keep the standard HTTPS requirement.
+const hostOctets = location.hostname.split('.');
+const numericIPv4 = hostOctets.length === 4 && hostOctets.every(part => /^[0-9]{1,3}$/.test(part) && Number(part) <= 255);
+const octets = hostOctets.map(Number);
+const privateIPv4 = numericIPv4 && (octets[0] === 10 || (octets[0] === 192 && octets[1] === 168) || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31));
+GODOT_CONFIG.args=['--audio-driver','Dummy'];
+const LAN_PREVIEW = location.protocol === 'http:' && privateIPv4;
+
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	}).filter(feature => !(LAN_PREVIEW && !GODOT_THREADS_ENABLED && feature.startsWith('Secure Context')));
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	<output id="audio-evidence" hidden></output><script>
+// LAN HTTP-compatible audio: native media + Web Audio sources, no AudioWorklet/SAB.
+(() => {
+ const ctx=new AudioContext();const master=ctx.createGain();master.gain.value=.85;master.connect(ctx.destination);
+ const musicBus=ctx.createGain();musicBus.gain.value=.67;musicBus.connect(master);
+ const music=document.createElement('audio');music.id='khan-music';music.preload='auto';music.loop=false;music.hidden=true;document.body.append(music);
+ const ogg=!!music.canPlayType('audio/ogg; codecs="vorbis"');music.src=ogg?'audio/mutki-khan-web.ogg':'audio/mutki-khan-original.mp3';
+ const media=ctx.createMediaElementSource(music);media.connect(musicBus);
+ if(!ogg)musicBus.gain.value*=.631;
+ const buffers=new Map(),loops=new Map(),shots=new Map();let pending=false,pendingAt=0,starts=0,active=false,stopTimer;
+ let game={ready:false,startVisible:false,startRect:[0,0,0,0]};let manifest={runtime:{}};
+ function startMusic(){clearTimeout(stopTimer);music.pause();music.currentTime=0;musicBus.gain.cancelScheduledValues(ctx.currentTime);musicBus.gain.setValueAtTime(ogg?.67:.423,ctx.currentTime);ctx.resume();starts++;active=true;return music.play().catch(e=>{active=false;document.getElementById('audio-evidence').dataset.error=e.message;});}
+ function trustedGesture(event){
+  ctx.resume().catch(()=>{});
+  let start=false;
+  if(event.type==='keydown')start=event.code==='KeyR'&&!event.repeat&&game.ready;
+  else if(game.ready&&game.startVisible){
+   const touch=event.touches?.[0]||event;const rect=document.getElementById('canvas').getBoundingClientRect();
+   const x=(touch.clientX-rect.left)/rect.width*540,y=(touch.clientY-rect.top)/rect.height*960;
+   const [rx,ry,rw,rh]=game.startRect;start=x>=rx&&x<=rx+rw&&y>=ry&&y<=ry+rh;
+  }
+  if(start && !(pending&&performance.now()-pendingAt<300)){pending=true;pendingAt=performance.now();startMusic();}
+ }
+ window.addEventListener('pointerdown',trustedGesture,true);window.addEventListener('keydown',trustedGesture,true);
+ async function prepare(data){manifest=data;await Promise.all(Object.entries(data.runtime||{}).map(async([key,file])=>{const bytes=await(await fetch('audio/carbon/'+file)).arrayBuffer();buffers.set(key,await ctx.decodeAudioData(bytes));}));}
+ function makeLoop(key){if(loops.has(key)||!buffers.has(key))return;const gain=ctx.createGain();gain.gain.value=0;gain.connect(master);const source=ctx.createBufferSource();source.buffer=buffers.get(key);source.loop=true;source.connect(gain);source.start();loops.set(key,{source,gain});}
+ function stopLoops(){for(const l of loops.values()){l.gain.gain.setTargetAtTime(0,ctx.currentTime,.015);l.source.stop(ctx.currentTime+.08);}loops.clear();for(const s of shots.values())try{s.source.stop();}catch{}shots.clear();}
+ const loopKeys=['engine_idle','engine_load','engine_coast','engine_underhood','engine_tunnel','skid','brake','nitro_loop'];
+ window.carbonSound={
+  prepare,
+  setGameState(state){game=state;},
+  startRace(){stopLoops();if(pending&&performance.now()-pendingAt<1000){pending=false;}else{startMusic();}for(const key of loopKeys)makeLoop(key);},
+  stopRace(finish){stopLoops();if(pending&&performance.now()-pendingAt<1000&&!finish)return;active=false;clearTimeout(stopTimer);musicBus.gain.setTargetAtTime(0,ctx.currentTime,.012);stopTimer=setTimeout(()=>music.pause(),70);},
+  pause(value){if(value){music.pause();ctx.suspend();}else{ctx.resume();if(active)music.play().catch(()=>{});}},
+  mix(key,amplitude,pitch){if(!active)return;makeLoop(key);const l=loops.get(key);if(!l)return;l.gain.gain.setTargetAtTime(amplitude,ctx.currentTime,.05);l.source.playbackRate.setTargetAtTime(pitch,ctx.currentTime,.045);},
+  oneShot(key,db,pitch=1){if(!buffers.has(key))return;const old=shots.get(key);if(old&&ctx.currentTime-old.at<.18)return;if(old)try{old.source.stop();}catch{}const source=ctx.createBufferSource();source.buffer=buffers.get(key);source.playbackRate.value=pitch;const gain=ctx.createGain();gain.gain.value=Math.pow(10,db/20);source.connect(gain);gain.connect(master);source.start();shots.set(key,{source,at:ctx.currentTime});source.addEventListener('ended',()=>{if(shots.get(key)?.source===source)shots.delete(key);gain.disconnect();});},
+  state(){return{musicPlaying:!music.paused&&!music.ended,musicStarts:starts,musicSourcesActive:music.paused||music.ended?0:1,backend:'WebAudio LAN bridge',codec:ogg?'provided OGG':'provided MP3 fallback',loadedSfx:buffers.size,loopPlayers:loops.size,active,context:ctx.state};}
+ };
+ window.carbonAudioClock=()=>Math.max(0,music.currentTime-(ctx.baseLatency||0)-(ctx.outputLatency||0));
+ setInterval(()=>{const out=document.getElementById('audio-evidence');if(out)out.dataset.bridge=JSON.stringify(window.carbonSound.state());},250);
+})();
+</script>
+<output id="metrics">Загрузка…</output>
+</body>
+</html>
+
+
+
+
+
+
