@@ -170,9 +170,9 @@ if([30,60,120].includes(qaFPS)){
  window.requestAnimationFrame=function(callback){function gate(time){if(time-previous>=1000/qaFPS-0.5){previous=time;callback(time);}else{nativeRAF(gate);}}return nativeRAF(gate);};
 }
 </script>
-<script src="game-418b1ea8e48c.js"></script>
+<script src="game-0c5d83b5d431.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":1,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"game-418b1ea8e48c","experimentalVK":false,"fileSizes":{"game-418b1ea8e48c.pck":90334412,"game-418b1ea8e48c.wasm":39513091},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":1,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"game-0c5d83b5d431","experimentalVK":false,"fileSizes":{"game-0c5d83b5d431.pck":90381232,"game-0c5d83b5d431.wasm":39513091},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 // This prototype uses WebGL/WASM and touch only. No microphone, clipboard,
 // persistence, service worker, threads, or credentials are needed for private LAN preview.
@@ -293,21 +293,30 @@ const engine = new Engine(GODOT_CONFIG);
  const musicBus=ctx.createGain();musicBus.gain.value=.67;musicBus.connect(master);
  const music=document.createElement('audio');music.id='khan-music';music.preload='auto';music.loop=false;music.hidden=true;document.body.append(music);
  const ogg=!!music.canPlayType('audio/ogg; codecs="vorbis"');music.src=ogg?'audio/mutki-khan-web.ogg':'audio/mutki-khan-original.mp3';
+ const raceSrc=music.src;const garageSrc=new URL('audio/garage-khan-preview.wav',location.href).href;
  const media=ctx.createMediaElementSource(music);media.connect(musicBus);
+ const bassAnalyser=ctx.createAnalyser();bassAnalyser.fftSize=1024;bassAnalyser.smoothingTimeConstant=.38;bassAnalyser.minDecibels=-70;bassAnalyser.maxDecibels=-5;musicBus.connect(bassAnalyser);
+ const bassBins=new Uint8Array(bassAnalyser.frequencyBinCount);
+ let garageOpen=false,garagePreview=false,previewUnlocked=false,previewStarts=0;
+ function garageBass(){if(!garagePreview||music.paused||ctx.state!=='running')return 0;bassAnalyser.getByteFrequencyData(bassBins);let sum=0;for(let i=1;i<=4;i++)sum+=bassBins[i];return Math.min(1,Math.pow(sum/(4*255),2)*1.2);}
+ function startGarage(){if(!garageOpen||garagePreview||active||pending)return;clearTimeout(stopTimer);music.pause();if(music.src!==garageSrc)music.src=garageSrc;music.loop=true;music.currentTime=0;musicBus.gain.cancelScheduledValues(ctx.currentTime);musicBus.gain.setValueAtTime(ogg?.35:.221,ctx.currentTime);garagePreview=true;previewStarts++;ctx.resume();music.play().catch(e=>{garagePreview=false;document.getElementById('audio-evidence').dataset.error=e.message;});}
+ function stopGarage(){if(!garagePreview)return;garagePreview=false;music.pause();music.loop=false;}
+
  if(!ogg)musicBus.gain.value*=.631;
  const buffers=new Map(),loops=new Map(),shots=new Map();let pending=false,pendingAt=0,starts=0,active=false,stopTimer;
  let game={ready:false,startVisible:false,startRect:[0,0,0,0]};let manifest={runtime:{}};
- function startMusic(){clearTimeout(stopTimer);music.pause();music.currentTime=0;musicBus.gain.cancelScheduledValues(ctx.currentTime);musicBus.gain.setValueAtTime(ogg?.67:.423,ctx.currentTime);ctx.resume();starts++;active=true;return music.play().catch(e=>{active=false;document.getElementById('audio-evidence').dataset.error=e.message;});}
+ function startMusic(){garagePreview=false;music.loop=false;clearTimeout(stopTimer);music.pause();if(music.src!==raceSrc)music.src=raceSrc;music.currentTime=0;musicBus.gain.cancelScheduledValues(ctx.currentTime);musicBus.gain.setValueAtTime(ogg?.67:.423,ctx.currentTime);ctx.resume();starts++;active=true;return music.play().catch(e=>{active=false;document.getElementById('audio-evidence').dataset.error=e.message;});}
  function trustedGesture(event){
-  ctx.resume().catch(()=>{});
+  ctx.resume().catch(()=>{});previewUnlocked=true;
   let start=false;
-  if(event.type==='keydown')start=event.code==='KeyR'&&!event.repeat&&game.ready;
+  if(event.type==='keydown')start=event.code==='KeyR'&&!event.repeat&&game.ready&&!garageOpen;
   else if(game.ready&&game.startVisible){
    const touch=event.touches?.[0]||event;const rect=document.getElementById('canvas').getBoundingClientRect();
    const x=(touch.clientX-rect.left)/rect.width*540,y=(touch.clientY-rect.top)/rect.height*960;
    const [rx,ry,rw,rh]=game.startRect;start=x>=rx&&x<=rx+rw&&y>=ry&&y<=ry+rh;
   }
   if(start && !(pending&&performance.now()-pendingAt<300)){pending=true;pendingAt=performance.now();startMusic();}
+  else if(!start&&garageOpen)startGarage();
  }
  window.addEventListener('pointerdown',trustedGesture,true);window.addEventListener('keydown',trustedGesture,true);
  async function prepare(data){manifest=data;await Promise.all(Object.entries(data.runtime||{}).map(async([key,file])=>{const bytes=await(await fetch('audio/carbon/'+file)).arrayBuffer();buffers.set(key,await ctx.decodeAudioData(bytes));}));}
@@ -316,13 +325,16 @@ const engine = new Engine(GODOT_CONFIG);
  const loopKeys=['engine_idle','engine_load','engine_coast','engine_underhood','engine_tunnel','skid','brake','nitro_loop'];
  window.carbonSound={
   prepare,
+  garageBass,
+  setGarage(value){garageOpen=value;if(!value)stopGarage();else if(previewUnlocked)startGarage();},
+  stopGaragePreview:stopGarage,
   setGameState(state){game=state;},
   startRace(){stopLoops();if(pending&&performance.now()-pendingAt<1000){pending=false;}else{startMusic();}for(const key of loopKeys)makeLoop(key);},
-  stopRace(finish){stopLoops();if(pending&&performance.now()-pendingAt<1000&&!finish)return;active=false;clearTimeout(stopTimer);musicBus.gain.setTargetAtTime(0,ctx.currentTime,.012);stopTimer=setTimeout(()=>music.pause(),70);},
+  stopRace(finish){stopLoops();if(pending&&performance.now()-pendingAt<1000&&!finish)return;active=false;garagePreview=false;music.loop=false;clearTimeout(stopTimer);musicBus.gain.setTargetAtTime(0,ctx.currentTime,.012);stopTimer=setTimeout(()=>music.pause(),70);},
   pause(value){if(value){music.pause();ctx.suspend();}else{ctx.resume();if(active)music.play().catch(()=>{});}},
   mix(key,amplitude,pitch){if(!active)return;makeLoop(key);const l=loops.get(key);if(!l)return;l.gain.gain.setTargetAtTime(amplitude,ctx.currentTime,.05);l.source.playbackRate.setTargetAtTime(pitch,ctx.currentTime,.045);},
   oneShot(key,db,pitch=1){if(!buffers.has(key))return;const old=shots.get(key);if(old&&ctx.currentTime-old.at<.18)return;if(old)try{old.source.stop();}catch{}const source=ctx.createBufferSource();source.buffer=buffers.get(key);source.playbackRate.value=pitch;const gain=ctx.createGain();gain.gain.value=Math.pow(10,db/20);source.connect(gain);gain.connect(master);source.start();shots.set(key,{source,at:ctx.currentTime});source.addEventListener('ended',()=>{if(shots.get(key)?.source===source)shots.delete(key);gain.disconnect();});},
-  state(){return{musicPlaying:!music.paused&&!music.ended,musicStarts:starts,musicSourcesActive:music.paused||music.ended?0:1,backend:'WebAudio LAN bridge',codec:ogg?'provided OGG':'provided MP3 fallback',loadedSfx:buffers.size,loopPlayers:loops.size,active,context:ctx.state};}
+  state(){return{musicPlaying:!music.paused&&!music.ended,musicStarts:starts,musicSourcesActive:music.paused||music.ended?0:1,backend:'WebAudio LAN bridge',codec:ogg?'provided OGG':'provided MP3 fallback',loadedSfx:buffers.size,loopPlayers:loops.size,active,context:ctx.state,garagePreview,previewStarts,garageBass:garageBass()};}
  };
  window.carbonAudioClock=()=>Math.max(0,music.currentTime-(ctx.baseLatency||0)-(ctx.outputLatency||0));
  setInterval(()=>{const out=document.getElementById('audio-evidence');if(out)out.dataset.bridge=JSON.stringify(window.carbonSound.state());},250);
