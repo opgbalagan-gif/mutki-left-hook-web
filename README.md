@@ -35,3 +35,5 @@
 Тоннельный фикс: нитро отменяет незавершённый статический таран и пробивает заграждение даже после остановки; преследователь использует реальное продвижение игрока, задержание учитывает абсолютный отрыв.
 
 15.10.2026: impact-triggered front camera with short slow motion; tunnel roadblock fits the actual interior; normal weak-point, swipe ram, and nitro break paths.
+
+15.10.2026 final: tunnel COPGTO flank the central fence and follow the road normal; 88 spark streaks at impact, darker night, wet original asphalt.
